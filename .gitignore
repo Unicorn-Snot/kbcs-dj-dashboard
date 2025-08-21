@@ -20,3 +20,5 @@ exports/
 # OS/editor
 .DS_Store
 *.log
+KPIs/
+*.csv
