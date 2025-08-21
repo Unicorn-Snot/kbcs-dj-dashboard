@@ -4,3 +4,19 @@ __pycache__/
 .venv/
 venv/
 .env
+# data & exports
+*.csv
+*.xlsx
+*.tsv
+/data/
+exports/
+
+# images/videos
+*.png
+*.jpg
+*.jpeg
+*.mp4
+
+# OS/editor
+.DS_Store
+*.log
