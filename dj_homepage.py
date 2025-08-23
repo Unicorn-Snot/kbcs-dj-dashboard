@@ -25,7 +25,7 @@ def render_homepage(programs, df: pd.DataFrame):
 
     cols = {c.lower() for c in df.columns}
 
-    # 1) Your Show Plays → sum of Items Selected
+    # 1) Host Show Plays → sum of Items Selected
     total_items = int(df.get("items selected", 0).sum())
     st.metric("Your Show Plays", total_items)
 
