@@ -10,7 +10,7 @@ dj_access_map = {
     ("Matt Fish", "2021"): "CrossCurrents",
     ("Tom Voorhees", "2000"): "Bluegrass Ramble",
     ("John Gibaut", "2016"): "Sunday's Hornpipe",
-    ("Braddah Gomes", "1991"): "Hawai'i Radio Connection",
+    ("Braddah Gomes", "1991"): "Hawai`i Radio Connection",
     ("Michael Olson", "2023"): "Freedom Sounds",
     ("Oneda Harris", "2004"): ["The Vault", "Living the Blues", "Gospel Highway"],
     ("Mike Biggins", "2016"): "Sunday Folks",
