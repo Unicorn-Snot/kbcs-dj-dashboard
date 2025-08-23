@@ -19,8 +19,8 @@ SHEETS: Dict[str, Dict[str, str]] = {
         "program_column": "Program Name",
     },
     "2024": {
-        "sheet_id": "1wh65x9uwfQHDGax0xhR_Q2tZSdfyBlLMw3gMlTXIZl0",
-        "gid": "1807168814",
+        "sheet_id": "1_j2ElPU3AswjefXimiJQ3pIrG9loKNOVNi2SeXpb21o",
+        "gid": "169834391",
         "program_column": "Program Name",
     },
 }
@@ -47,7 +47,7 @@ def _normalize_headers_and_columns(df: pd.DataFrame, expected_program_header: st
 
     # 2) base alias map (only map if present)
     alias_map = {
-        "section name": "section",          # we’ll promote this to 'program' if configured
+        "section name": "section",          
         "program name": "program",
         "title": "title",
         "channel": "channel",

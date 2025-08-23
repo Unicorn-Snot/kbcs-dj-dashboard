@@ -27,21 +27,21 @@ def render_homepage(programs, df: pd.DataFrame):
 
     # 1) Your Show Plays → sum of Items Selected
     total_items = int(df.get("items selected", 0).sum())
-    st.metric("🎶 Your Show Plays", total_items)
+    st.metric("Your Show Plays", total_items)
 
     # 2) Share of Station Plays → from % of Total (preferred) or fallback using totals
     if "percent of total" in cols:
         share = float(df["percent of total"].mean())  # % already in sheet
-        st.metric("📊 Share of Station Plays", f"{share:.1f}%")
+        st.metric("Share of Station Plays", f"{share:.1f}%")
     elif {"items selected", "total items selected"}.issubset(cols):
         station_total = float(df["total items selected"].max())
         share = (total_items / station_total * 100.0) if station_total > 0 else 0.0
-        st.metric("📊 Share of Station Plays", f"{share:.1f}%")
+        st.metric("Share of Station Plays", f"{share:.1f}%")
 
     # 3) On-Demand Plays (if present)
     if "on_demand items selected" in cols:
         on_demand = int(df["on_demand items selected"].sum())
-        st.metric("▶️ On-Demand Plays", on_demand)
+        st.metric("On-Demand Plays", on_demand)
 
     st.markdown("---")
 
