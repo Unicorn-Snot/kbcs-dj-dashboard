@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Tuple
 
 dj_access_map = {
     ("Auntmama", "2003"): "Sunday Folks",
-    ("Levi Sweeney", "2024"): "Retro Radio Theatre",
+    ("Levi Sweeney", "2024"): "The Retro Radio Theatre",
     ("John Pai", "2000"): "Giant Steps",
     ("Rus Thompson", "2003 and 2023"): ["Road Songs", "Night Train"],
     ("Michael Schell", "2021"): "Flotation Device",
