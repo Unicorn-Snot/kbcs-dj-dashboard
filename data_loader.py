@@ -47,7 +47,7 @@ def _normalize_headers_and_columns(df: pd.DataFrame, expected_program_header: st
 
     # 2) base alias map (only map if present)
     alias_map = {
-        "section name": "section",          
+        "section name": "section",          # may be promoted to 'program' below
         "program name": "program",
         "title": "title",
         "channel": "channel",
@@ -106,13 +106,27 @@ def _normalize_headers_and_columns(df: pd.DataFrame, expected_program_header: st
 
     # Percent string -> float number (0–100)
     df["percent of total"] = (
-        df["percent of total"].astype(str).str.replace("%", "", regex=False).str.strip()
+        df["percent of total"].astype(str).replace("%", "", regex=False).str.strip()
     )
     df["percent of total"] = _coerce_numeric(df["percent of total"])
 
+    # 7) Optional: enforce a consistent column order for the UI
+    cols_order = [
+        "program",
+        "items selected",
+        "total items selected",
+        "on_demand items selected",
+        "percent of total",
+        "channel",
+        "title",
+        "pn",
+        "_id",
+    ]
+    df = df[[c for c in cols_order if c in df.columns] + [c for c in df.columns if c not in cols_order]]
+
     return df
 
-# === Per-year loader (the piece that was missing) ===
+# === Per-year loader ===
 @st.cache_data(ttl=300)
 def load_year_df(year: str) -> pd.DataFrame:
     cfg = SHEETS[year]
