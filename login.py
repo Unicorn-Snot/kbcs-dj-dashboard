@@ -1,74 +1,84 @@
 import streamlit as st
 from dj_access_map import dj_access_map
 from dj_homepage import homepage_view_for_program
+from data_loader import SHEETS, load_year_df
 
 st.set_page_config(page_title="KBCS DJ Dashboard", layout="wide")
 
 CANVA_URL = "https://www.canva.com/design/DAGwp9keuCM/sVuvLE-Coyxg-RxMtHvfWQ/view?embed"
 
-# --- init session state
-if "authed" not in st.session_state:
-    st.session_state.authed = False
-if "programs" not in st.session_state:
-    st.session_state.programs = None
-if "dj_name" not in st.session_state:
-    st.session_state.dj_name = ""
+# --- Canva background ---
+st.markdown(f"""
+    <style>
+    .stApp {{
+        background: transparent !important;
+    }}
 
-# --- if already authed, skip login UI
-if st.session_state.authed and st.session_state.programs:
-    st.success(f"Welcome {st.session_state.dj_name}! Loading KPIs for: {st.session_state.programs}")
-    homepage_view_for_program(st.session_state.programs)
-    st.stop()
+    .canva-bg {{
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%;
+        height: 100%;
+        border: none;
+        z-index: -3;
+    }}
 
-# ---------- LOGIN UI ----------
-# Overlay CSS
-st.markdown("""
-<style>
-.overlay-stage { position: relative; height: 700px; }
-.overlay-name, .overlay-code, .overlay-button {
-  position: absolute; z-index: 10; width: 380px; left: 520px;
-}
-.overlay-name { top: 220px; }
-.overlay-code { top: 300px; }
-.overlay-button { top: 380px; }
-</style>
+    .shade {{
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, .65);
+        backdrop-filter: blur(6px);
+        z-index: -2;
+    }}
+
+    .overlay {{
+        position: relative;
+        top: 210px;
+        left: -35%;
+        height: 50px;  /* forces a set vertical length */
+        padding: 30px 25px;
+        margin: 150px auto;
+        width: 500px;
+        padding: 20px;
+        background: rgba(0,0,0,0.6);
+        border-radius: 10px;
+        z-index: -3;
+    }}
+    
+    .login-label {{
+        font-size: 45px;
+        color: white;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }}
+    </style>
+
+    <iframe class="canva-bg" src="{CANVA_URL}" allowfullscreen></iframe>
 """, unsafe_allow_html=True)
 
-# Single iframe + positioned overlays
-st.markdown('<div class="overlay-stage">', unsafe_allow_html=True)
-st.components.v1.iframe(CANVA_URL, height=700, scrolling=False)
+# --- Login form overlay ---
+with st.container():
+    st.markdown('<div class="overlay">', unsafe_allow_html=True)
 
-with st.form("dj_login_form", clear_on_submit=False):
-    st.markdown('<div class="overlay-name">', unsafe_allow_html=True)
-    input_name = st.text_input("What's your name?", key="dj_name_input", label_visibility="collapsed")
+    st.markdown('<div class="login-label">What’s your name?</div>', unsafe_allow_html=True)
+    input_name = st.text_input("", key="name_input")
+
+    st.markdown('<div class="login-label">Access Code</div>', unsafe_allow_html=True)
+    input_code = st.text_input("", type="password", key="access_code_input")
+
+    submitted = st.button("Enter")
+
     st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="overlay-code">', unsafe_allow_html=True)
-    input_code = st.text_input("Access Code", type="password", key="dj_code_input", label_visibility="collapsed")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="overlay-button">', unsafe_allow_html=True)
-    submitted = st.form_submit_button("Enter")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-st.markdown('</div>', unsafe_allow_html=True)  # close overlay-stage
-
-# Auth check
+# --- Auth logic ---
 if submitted:
-    name = (input_name or "").strip()
-    code = (input_code or "").strip()
+    key = (input_name.strip(), input_code.strip())
+    programs = dj_access_map.get(key)
 
-    # exact match; if you prefer case-insensitive names, uncomment next line
-    # name_key = name.lower()
-    # build a case-insensitive mapping if desired:
-    # norm_map = { (k[0].lower(), k[1]): v for k,v in dj_access_map.items() }
-    # programs = norm_map.get((name_key, code))
-
-    programs = dj_access_map.get((name, code))
     if programs:
-        st.session_state.authed = True
-        st.session_state.programs = programs
-        st.session_state.dj_name = name
-        st.rerun()  # jump into the authed view immediately
+        st.success(f"Welcome {input_name}! Loading KPIs for: {programs}")
+        homepage_view_for_program(programs)
     else:
         st.error("Access Denied. Please check your name and access code.")
