@@ -1,85 +1,108 @@
 # Dj's Home Page
-
+import unicodedata
 import streamlit as st
 import pandas as pd
+import re
 from typing import List, Union
 from data_loader import SHEETS, load_year_df
 
 PROGRAM_COL = "program"   # normalized from "Program Name"
 
-def _filter_for_show(df: pd.DataFrame, show_name: str) -> pd.DataFrame:
-    """Filter rows for this show; prefer 'program' but fall back to 'pn' when needed."""
-    cols = {c.lower() for c in df.columns}
-    if PROGRAM_COL in cols:
-        view = df[df[PROGRAM_COL].astype(str).str.strip() == show_name]
-        if not view.empty:
-            return view
-    if "pn" in cols:
-        return df[df["pn"].astype(str).str.strip() == show_name]
-    return df.iloc[0:0]  # empty
+# ---------- Helpers ----------
+def _norm_text(s: str) -> str:
+    """Normalize unicode, collapse spaces, lowercase, and unify apostrophes."""
+    if s is None:
+        return ""
+    s = unicodedata.normalize("NFKC", str(s))
+    s = s.replace("’", "'")             # curly -> straight apostrophe
+    s = re.sub(r"\s+", " ", s)          # collapse multiple spaces
+    return s.strip().casefold()
 
-def _pick_program_row(view: pd.DataFrame) -> pd.DataFrame:
+
+def _year_stack() -> pd.DataFrame:
+    """Load all years and add a 'year' column."""
+    frames = []
+    for y in sorted(SHEETS.keys()):
+        d = load_year_df(y).copy()
+        d["year"] = y
+        frames.append(d)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def _filter_by_program(df: pd.DataFrame, show_name: str) -> pd.DataFrame:
     """
-    Reduce to a single row representing the program’s totals.
-    We choose the row with the largest 'total items selected'
-    (safe if there are duplicates or per-month rows).
+    Filter rows for this show:
+      1) exact match on normalized 'program'
+      2) fallback exact match on normalized 'pn'
+      3) if no exact matches, return empty (caller may do fuzzy debug)
     """
-    if "total items selected" in {c.lower() for c in view.columns} and not view.empty:
-        return view.sort_values("total items selected", ascending=False).head(1)
-    # Fallback: if totals column is missing, keep as-is (the KPI code will fall back)
-    return view.head(1)
+    df = df.copy()
+    df["program_norm"] = df.get("program", "").astype(str).map(_norm_text)
+    df["pn_norm"] = df.get("pn", "").astype(str).map(_norm_text)
 
-def render_homepage(programs: Union[str, List[str]], df: pd.DataFrame):
-    # Normalize to a single program name for header
-    show_name = programs[0] if isinstance(programs, list) else programs
-    st.subheader(f"Your Program KPIs{f' — {show_name}' if show_name else ''}")
+    choice_norm = _norm_text(show_name)
 
-    # 1) Filter to this show (by Program Name, fallback PN)
-    raw_view = _filter_for_show(df, show_name)
-    if raw_view.empty:
-        st.warning(f"No rows found for program: {show_name}")
-        return
+    view = df[df["program_norm"] == choice_norm]
+    if not view.empty:
+        return view
 
-    # 2) Collapse to a single “program total” row (uses Total Items Selected)
-    view = _pick_program_row(raw_view)
-    cols = {c.lower() for c in view.columns}
+    view = df[df["pn_norm"] == choice_norm]
+    return view  # may be empty; caller handles fuzzy/diagnostics
 
-    # 3) Your Show Plays → use Total Items Selected (definitive)
-    if "total items selected" in cols:
-        total_items = int(view["total items selected"].iloc[0])
+
+# ---------- KPI rendering ----------
+def render_homepage(show_name: str, raw_view: pd.DataFrame, scope_label: str):
+    """
+    Render KPIs for a single show using the already-filtered rows (raw_view).
+    Prefers per-program 'total items selected' when available; otherwise uses 'items selected'.
+    """
+    st.subheader(f"Your Program KPIs — {show_name}")
+
+    cols_lower = {c.lower() for c in raw_view.columns}
+
+    # Your Show Plays (prefer the per-program total column if present)
+    total_items = None
+    if "total items selected" in cols_lower:
+        # if multiple rows per program (e.g., per month), max() gives the program's annual total in that sheet
+        total_items = int(raw_view["total items selected"].max())
+    elif "items selected" in cols_lower:
+        # fallback: sum raw rows
+        total_items = int(raw_view["items selected"].sum())
     else:
-        # graceful fallback if an older sheet lacks totals
-        total_items = int(raw_view.get("items selected", pd.Series([0])).sum())
-    st.metric("Your Show Plays", total_items)
+        total_items = 0
 
-    # 4) Share of Station Plays → use Percent of Total if present
-    if "percent of total" in cols:
-        share = float(view["percent of total"].iloc[0])
-        st.metric("Share of Station Plays", f"{share:.1f}%")
-    else:
-        # optional fallback if you later want to compute from a known station total
-        pass
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Your Show Plays", total_items)
 
-    # 5) On‑Demand Plays → use the per‑program total (not a global sum)
-    if "on_demand items selected" in cols:
-        on_demand = int(view["on_demand items selected"].iloc[0])
-        st.metric("On‑Demand Plays", on_demand)
+    # Share of Station Plays (use 'percent of total' if present)
+    if "percent of total" in cols_lower and not raw_view["percent of total"].isna().all():
+        share = float(raw_view["percent of total"].max())
+        with c2:
+            st.metric("Share of Station Plays", f"{share:.1f}%")
 
+    # On‑Demand Plays (sum of normalized column if present)
+    if "on_demand items selected" in cols_lower:
+        on_demand = int(raw_view["on_demand items selected"].sum())
+        with c3:
+            st.metric("On‑Demand Plays", on_demand)
+
+    st.caption(f"Scope: {scope_label}")
     st.markdown("---")
 
-    # 6) Channel breakdown (context only; sums Items Selected within this show’s rows)
-    if "channel" in cols and "items selected" in {c.lower() for c in raw_view.columns}:
+    # Breakdown by Channel (context)
+    if {"channel", "items selected"}.issubset(cols_lower):
         by_ch = (
             raw_view.groupby(raw_view["channel"].astype(str).str.strip(), dropna=False)["items selected"]
-                   .sum()
-                   .sort_values(ascending=False)
+                    .sum()
+                    .sort_values(ascending=False)
         )
         if not by_ch.empty:
             st.caption("Where listeners are finding you (by Channel)")
             st.bar_chart(by_ch)
 
-    # 7) Top Titles (context only)
-    if "title" in cols and "items selected" in {c.lower() for c in raw_view.columns}:
+    # Top Titles (context)
+    if {"title", "items selected"}.issubset(cols_lower):
         top_titles = (
             raw_view.groupby(raw_view["title"].astype(str).str.strip(), dropna=False)["items selected"]
                     .sum()
@@ -94,42 +117,87 @@ def render_homepage(programs: Union[str, List[str]], df: pd.DataFrame):
                 use_container_width=True
             )
 
-    # 8) Raw rows (for this show)
+    # Raw rows for this show (debug/inspection)
     with st.expander("Show raw rows (for this show)"):
         st.dataframe(raw_view, use_container_width=True)
 
-def load_merged_years() -> pd.DataFrame:
-    frames = []
-    for y in sorted(SHEETS.keys()):
-        d = load_year_df(y).copy()
-        d["year"] = y
-        frames.append(d)
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
+# ---------- Top-level view ----------
 def homepage_view_for_program(programs: Union[str, List[str]]):
     # Normalize to list
     programs = [programs] if isinstance(programs, str) else programs
 
-    year_choice = st.radio("Data scope", options=["All years"] + sorted(SHEETS.keys()), horizontal=True)
+    # Pick scope
+    year_choice = st.radio(
+        "Data scope",
+        options=["All years"] + sorted(SHEETS.keys()),
+        horizontal=True,
+    )
 
-    df = load_merged_years() if year_choice == "All years" else load_year_df(year_choice)
+    # Load data
+    df = _year_stack() if year_choice == "All years" else load_year_df(year_choice)
 
     if PROGRAM_COL not in df.columns and "pn" not in df.columns:
         st.error("Neither 'program' nor 'pn' found. Check data_loader normalization.")
         return
 
+    # Pick the DJ's show (if multiple)
     choice = programs[0] if len(programs) == 1 else st.selectbox("Select a program:", programs)
 
-    # Year breakdown (for this show) using the total column
-    view_all = _filter_for_show(df, choice)
-    if year_choice == "All years" and not view_all.empty and "total items selected" in {c.lower() for c in view_all.columns}:
+    # Filter for exact match (normalized)
+    raw_view = _filter_by_program(df, choice)
+
+    # If no exact match, offer a fuzzy diagnostic to help fix labels
+    if raw_view.empty:
+        choice_norm = _norm_text(choice)
+        tmp = df.copy()
+        tmp["program_norm"] = tmp.get("program", "").astype(str).map(_norm_text)
+        tmp["pn_norm"] = tmp.get("pn", "").astype(str).map(_norm_text)
+
+        # fuzzy contains search
+        fuzzy = tmp[tmp["program_norm"].str.contains(re.escape(choice_norm), na=False)]
+        if fuzzy.empty:
+            fuzzy = tmp[tmp["pn_norm"].str.contains(re.escape(choice_norm), na=False)]
+
+        st.warning(f"No exact rows found for '{choice}'. Showing possible matches below.")
+        with st.expander("Possible matches (debug)"):
+            st.write("Distinct program labels (normalized → sample originals):")
+            samples = (
+                tmp.assign(_prog_disp=tmp.get("program", "").fillna("").astype(str))
+                   .groupby("program_norm", dropna=False)["_prog_disp"]
+                   .apply(lambda s: list(s.head(3)))
+                   .reset_index()
+                   .rename(columns={"program_norm": "normalized", "_prog_disp": "examples"})
+            )
+            st.dataframe(samples, use_container_width=True)
+
+            if "pn" in tmp.columns:
+                st.write("Distinct PN labels (normalized → sample originals):")
+                samples_pn = (
+                    tmp.assign(_pn_disp=tmp.get("pn", "").fillna("").astype(str))
+                       .groupby("pn_norm", dropna=False)["_pn_disp"]
+                       .apply(lambda s: list(s.head(3)))
+                       .reset_index()
+                       .rename(columns={"pn_norm": "normalized", "_pn_disp": "examples"})
+                )
+                st.dataframe(samples_pn, use_container_width=True)
+
+        # If you still want to render something, uncomment:
+        # raw_view = fuzzy
+
+        return
+
+    # Year breakdown if viewing all years and totals column exists
+    if year_choice == "All years" and "year" in raw_view.columns and "total items selected" in raw_view.columns:
         with st.expander("Year breakdown (Total Items Selected)"):
-            # If multiple rows per year, take the max per year to reflect the program’s annual total
             yr = (
-                view_all.groupby("year", as_index=False)["total items selected"]
+                raw_view.groupby("year", as_index=False)["total items selected"]
                         .max()
                         .sort_values("year")
             )
-            st.bar_chart(yr.set_index("year"))
+            if not yr.empty:
+                st.bar_chart(yr.set_index("year"))
 
-    render_homepage(choice, df)
+    # Render KPIs for this show
+    scope_label = "All years" if year_choice == "All years" else year_choice
+    render_homepage(choice, raw_view, scope_label)
