@@ -123,7 +123,7 @@ def render_homepage(show_name: str, raw_view: pd.DataFrame, scope_label: str):
 
 
 # ---------- Top-level view ----------
-def homepage_view_for_program(programs: Union[str, List[str]]):
+def homepage_view_for_program(programs: List[str], df: pd.DataFrame):
     # Normalize to list
     programs = [programs] if isinstance(programs, str) else programs
 
